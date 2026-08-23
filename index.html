@@ -184,8 +184,34 @@ body{
   box-shadow:0 1px 2px rgba(20,23,26,.05),0 10px 30px rgba(20,23,26,.09);
 }
 .gauge{background:var(--gauge-bg);padding:16px 18px 13px;display:flex;align-items:center;gap:14px}
-.gauge svg{width:72px;height:41px;flex:none}
-.needle{transform-origin:50px 40px;transition:transform .5s cubic-bezier(.22,1,.36,1)}
+.gauge svg{width:86px;height:41px;flex:none;transform-origin:50% 58%;animation:batIdle 3.4s ease-in-out infinite}
+@keyframes batIdle{
+  0%,100%{transform:rotate(-.55deg) translateY(0)}
+  25%{transform:rotate(.35deg) translateY(-.7px)}
+  50%{transform:rotate(.6deg) translateY(.35px)}
+  75%{transform:rotate(-.25deg) translateY(-.35px)}
+}
+.gauge.jolt svg{animation:batJolt .46s cubic-bezier(.36,.07,.19,.97)}
+@keyframes batJolt{
+  0%{transform:translateX(0) rotate(0)}
+  15%{transform:translateX(-1.8px) rotate(-1.5deg)}
+  35%{transform:translateX(1.5px) rotate(1.3deg)}
+  55%{transform:translateX(-1.1px) rotate(-.85deg)}
+  78%{transform:translateX(.6px) rotate(.45deg)}
+  100%{transform:translateX(0) rotate(0)}
+}
+.cell{transform-box:fill-box;transform-origin:center;transition:fill .45s ease,opacity .4s ease}
+.cell.pop{animation:cellPop .5s cubic-bezier(.22,1,.36,1)}
+@keyframes cellPop{0%{opacity:0;transform:scaleY(.25)}55%{opacity:1;transform:scaleY(1.16)}100%{transform:scaleY(1)}}
+.cell.next{animation:cellGhost 1.3s ease-in-out infinite}
+@keyframes cellGhost{0%,100%{opacity:.10}50%{opacity:.40}}
+#bolt{transform-box:fill-box;transform-origin:center;animation:boltPulse 1.7s ease-in-out infinite}
+@keyframes boltPulse{0%,100%{opacity:.42;transform:scale(.93)}50%{opacity:.95;transform:scale(1.07)}}
+.gauge.full #bolt{animation:none;opacity:1}
+@media (prefers-reduced-motion:reduce){
+  .gauge svg,.gauge.jolt svg,.cell.next,#bolt{animation:none}
+  .cell.next{opacity:.22}
+}
 .gauge-step{font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.16em;color:var(--amber)}
 .gauge-label{color:#EDF0F3;font-size:13.5px;font-weight:600;margin-top:2px}
 .body{padding:24px 20px 20px}
@@ -337,16 +363,13 @@ details[open] summary::after{content:" ▴"}
 <section class="pane" id="s2">
   <div class="inner">
     <div class="survey">
-      <div class="gauge">
-        <svg viewBox="0 0 100 46" aria-hidden="true">
-          <path d="M8 40 A42 42 0 0 1 92 40" fill="none" stroke="#2A3138" stroke-width="4" stroke-linecap="round"/>
-          <path id="arc" d="M8 40 A42 42 0 0 1 92 40" fill="none" stroke="#E08700" stroke-width="4"
-                stroke-linecap="round" stroke-dasharray="132" stroke-dashoffset="132"
-                style="transition:stroke-dashoffset .5s cubic-bezier(.22,1,.36,1)"/>
-          <g class="needle" id="needle" transform="rotate(-90 50 40)">
-            <line x1="50" y1="40" x2="50" y2="12" stroke="#F4F6F8" stroke-width="2" stroke-linecap="round"/>
-          </g>
-          <circle cx="50" cy="40" r="3.5" fill="#F4F6F8"/>
+      <div class="gauge" id="gauge">
+        <svg viewBox="0 0 100 48" aria-hidden="true">
+          <rect x="1.6" y="9" width="88" height="30" rx="7.5" fill="#0B0E12" stroke="#333B44" stroke-width="2"/>
+          <rect x="91.6" y="18.4" width="6.4" height="11.2" rx="2.6" fill="#333B44"/>
+          <g id="cells"></g>
+          <path id="bolt" d="M48.6 13.6 L39.8 25.8 h4.9 l-2.3 8.6 L52.4 22 h-5.2 z"
+                fill="#F4F6F8" stroke="#0B0E12" stroke-width="1.1" stroke-linejoin="round"/>
         </svg>
         <div>
           <div class="gauge-step"><span id="cur">01</span> / 08</div>
@@ -601,6 +624,54 @@ const FORM_TOKEN = "TASO-2026-A7K3X";      // Apps Script와 동일한 값이어
 const PAGE_OPEN_AT = Date.now();           // 스팸 판별용 체류시간 측정
 
 /* ═══════════════════════════════════════════════
+   유입경로 표기 설정
+   링크 뒤에 ?utm_source=코드 를 붙이면
+   스프레드시트 '유입경로' 칸에 아래 한글 이름으로 기록됩니다.
+   예) .../TS_INFORM/?utm_source=insta_bio  →  인스타 프로필
+   새 채널이 생기면 '코드' : '표기이름' 형태로 한 줄만 추가하면 됩니다.
+   목록에 없는 코드를 쓰면 코드 그대로 기록됩니다.
+   ═══════════════════════════════════════════════ */
+const SOURCE_MAP = {
+  'insta_bio'     : '인스타 프로필',
+  'insta_story'   : '인스타 스토리',
+  'insta_post'    : '인스타 게시물',
+  'insta_ad'      : '인스타 광고',
+  'blog_post'     : '블로그 본문',
+  'blog_profile'  : '블로그 프로필',
+  'kakao_ch'      : '카카오 채널',
+  'kakao_msg'     : '카카오 단체발송',
+  'homepage'      : '대표 홈페이지',
+  'youtube'       : '유튜브',
+  'sms'           : '문자 발송',
+  'namecard'      : '명함 QR',
+  'banner'        : '오프라인 배너',
+  'car_sticker'   : '차량 스티커',
+  'flyer'         : '전단지 QR',
+  'danggeun'      : '당근마켓',
+  'cafe'          : '카페 커뮤니티',
+  'partner'       : '제휴처',
+  'referral'      : '지인 소개'
+};
+
+/* utm_source 가 없을 때 어디서 클릭해 들어왔는지로 자동 판별 */
+const REFERRER_MAP = [
+  ['tsautoplan.com',   '대표 홈페이지'],
+  ['instagram.com',    '인스타그램'],
+  ['blog.naver.com',   '네이버 블로그'],
+  ['cafe.naver.com',   '네이버 카페'],
+  ['search.naver.com', '네이버 검색'],
+  ['naver.com',        '네이버'],
+  ['pf.kakao.com',     '카카오 채널'],
+  ['kakao.com',        '카카오톡'],
+  ['google.',          '구글 검색'],
+  ['youtube.com',      '유튜브'],
+  ['facebook.com',     '페이스북'],
+  ['daum.net',         '다음'],
+  ['bing.com',         '빙 검색'],
+  ['t.co',             'X(트위터)']
+];
+
+/* ═══════════════════════════════════════════════
    고객 후기 (최대 10개까지 등록 가능 / 1.6초마다 한 칸씩 이동)
    img  : 사진 파일 경로. 비워두면 'PHOTO' 자리표시가 나옵니다.
    text : 후기 문구 (카드에는 3줄까지 노출, 넘치면 ... 처리)
@@ -626,11 +697,46 @@ const hist = [];
 const $ = s => document.querySelector(s);
 const steps = document.querySelectorAll('.step');
 
+/* ── 배터리 게이지 ── */
+const CELLS = 8;
+(function buildCells(){
+  const g = document.getElementById('cells');
+  let h = '';
+  for(let i = 0; i < CELLS; i++){
+    h += `<rect class="cell" x="${(6 + i * 10.1).toFixed(2)}" y="14" width="8.3" height="20" rx="2.2" fill="#E08700" opacity="0"/>`;
+  }
+  g.innerHTML = h;
+})();
+
+let prevFilled = -1;
+function paintBattery(filled){
+  const gauge = document.getElementById('gauge');
+  const color = filled >= CELLS ? '#2FBF71' : (filled <= 2 ? '#E5484D' : '#E9930E');
+  document.querySelectorAll('#cells .cell').forEach((c, i) => {
+    c.classList.remove('next','pop');
+    if(i < filled){
+      c.setAttribute('fill', color);
+      c.style.opacity = 1;
+      if(filled > prevFilled && i === filled - 1) c.classList.add('pop');
+    }else{
+      c.style.opacity = 0;
+      if(i === filled) c.classList.add('next');
+    }
+  });
+  gauge.classList.toggle('full', filled >= CELLS);
+  if(prevFilled !== -1 && filled !== prevFilled){
+    gauge.classList.remove('jolt');
+    void gauge.offsetWidth;
+    gauge.classList.add('jolt');
+    setTimeout(() => gauge.classList.remove('jolt'), 480);
+  }
+  prevFilled = filled;
+}
+
 function render(){
   steps.forEach(s => s.classList.toggle('on', +s.dataset.step === step));
   const ratio = step > TOTAL ? 1 : (step - 1) / TOTAL;
-  $('#arc').style.strokeDashoffset = 132 - (132 * ratio);
-  $('#needle').setAttribute('transform', `rotate(${-90 + 180 * ratio} 50 40)`);
+  paintBattery(Math.min(CELLS, Math.round(ratio * CELLS)));
   $('#cur').textContent = step > TOTAL ? '08' : String(step).padStart(2,'0');
   $('#glabel').textContent = LABELS[step-1];
 }
@@ -712,10 +818,16 @@ $('#submitBtn').addEventListener('click', async ()=>{
   // 유입일시 (한국시간 · yyyy-MM-dd HH:mm:ss)
   const 유입일시 = new Date().toLocaleString('sv-SE', { timeZone:'Asia/Seoul' });
 
-  // 유입경로: utm_source > 유입 사이트 도메인 > 직접유입
-  let 경로 = p.get('utm_source') || '';
+  // 유입경로: utm_source(SOURCE_MAP 변환) > 유입 사이트 도메인(REFERRER_MAP 변환) > 직접유입
+  let 경로 = '';
+  const src = (p.get('utm_source') || '').trim().toLowerCase();
+  if(src) 경로 = SOURCE_MAP[src] || src;
   if(!경로 && document.referrer){
-    try{ 경로 = new URL(document.referrer).hostname.replace(/^www\./,''); }catch(_){}
+    try{
+      const host = new URL(document.referrer).hostname.replace(/^www\./,'').toLowerCase();
+      const hit = REFERRER_MAP.find(([key]) => host.includes(key));
+      경로 = hit ? hit[1] : host;
+    }catch(_){}
   }
   if(!경로) 경로 = '직접유입';
 
